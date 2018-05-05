@@ -2,7 +2,7 @@ import scala.util.Properties
 
 name := """bdg-sequila"""
 
-version := "0.3"
+version := "0.3-SNAPSHOT"
 
 organization := "org.biodatageeks"
 
@@ -40,7 +40,7 @@ libraryDependencies += "com.github.samtools" % "htsjdk" % "2.14.1"
 
 libraryDependencies += "com.github.potix2" %% "spark-google-spreadsheets" % "0.5.0"
 
-libraryDependencies += "ch.cern.sparkmeasure" %% "spark-measure" % "0.11"
+libraryDependencies ++= Seq("org.scalanlp" %% "breeze" % "0.13.2", "ch.cern.sparkmeasure" %% "spark-measure" % "0.11")
 
 //fork := true
 fork in Test := true
@@ -93,13 +93,12 @@ assemblyMergeStrategy in assembly := {
 }
 
 /* only for releasing assemblies*/
-artifact in (Compile, assembly) := {
-  val art = (artifact in (Compile, assembly)).value
-  art.withClassifier(Some("assembly"))
-}
-addArtifact(artifact in (Compile, assembly), assembly)
+//artifact in (Compile, assembly) := {
+//  val art = (artifact in (Compile, assembly)).value
+//  art.withClassifier(Some("assembly"))
+//}
+//addArtifact(artifact in (Compile, assembly), assembly)
 
-publishConfiguration := publishConfiguration.value.withOverwrite(true)
 
 credentials += Credentials(Path.userHome / ".ivy2" / ".credentials")
 publishTo := {
