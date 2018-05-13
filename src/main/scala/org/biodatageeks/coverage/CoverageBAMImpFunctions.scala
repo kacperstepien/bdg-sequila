@@ -156,6 +156,7 @@ class CoverageReadBAMFunctions(covReadDataset:Dataset[BAMRecord]) extends Serial
     start = System.nanoTime()
     lazy val partCov = covQual
       .sort(asc("contigName"),asc("start"))
+      //.orderBy(asc("contigName"),asc("start"))
       .mapPartitions { partIterator =>
         val covMap = new HashMap[(String, Int), (Array[Array[Int]], Array[Int])]()
         val numSubArrays = 10000
@@ -165,6 +166,61 @@ class CoverageReadBAMFunctions(covReadDataset:Dataset[BAMRecord]) extends Serial
         var lastChr = "NA"
         var lastPosition = 0
         var outputSize = 0
+        /*partIterator.map (
+          cr => {
+            val cigar = TextCigarCodec.decode(cr.cigar)
+            val cigInterator = cigar.getCigarElements.iterator()
+            var position = cr.start
+            val cigarStartPosition = position
+            while (cigInterator.hasNext) {
+              val cigarElement = cigInterator.next()
+              val cigarOpLength = cigarElement.getLength
+              val cigarOp = cigarElement.getOperator
+              cigarOp match {
+                case CigarOperator.M | CigarOperator.X | CigarOperator.EQ =>
+                  var currPosition = 0
+                  while (currPosition < cigarOpLength) {
+                    val subIndex = position % numSubArrays
+                    val index = position / numSubArrays
+
+                    if (!covMap.keySet.contains(cr.contigName, index)) {
+                      covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.buckets.length),Array.fill[Int](subArraySize)(0) )
+                    }
+                    val params = coverageHistParam.buckets.sortBy(r=>r)
+                    if(coverageHistParam.histType == CoverageHistType.MAPQ) {
+                      breakable {
+                        for (i <- 0 until params.length) {
+                          if ( i < params.length-1  && cr.mapq >= params(i) && cr.mapq < params(i+1)) {
+                            covMap(cr.contigName, index)._1(subIndex)(i) += 1
+                            break
+                          }
+                        }
+
+                      }
+                      if (cr.mapq >= params.last) covMap(cr.contigName, index)._1(subIndex)(params.length-1) += 1
+                    }
+                    else throw new Exception("Unsupported histogram parameter")
+
+
+                    covMap(cr.contigName, index)._2(subIndex) += 1
+
+                    position += 1
+                    currPosition += 1
+                    /*add first*/
+                    if (outputSize == 0) chrMinMax.append((cr.contigName, position))
+                    if (covMap(cr.contigName, index)._2(subIndex) == 1) outputSize += 1
+
+                  }
+                case CigarOperator.N | CigarOperator.D => position += cigarOpLength
+                case _ => None
+              }
+            }
+            val currLength = position - cigarStartPosition
+            if (maxCigarLength < currLength) maxCigarLength = currLength
+            lastPosition = position
+            lastChr = cr.contigName
+          }
+        )*/
         for (cr <- partIterator) {
           val cigar = TextCigarCodec.decode(cr.cigar)
           val cigInterator = cigar.getCigarElements.iterator()

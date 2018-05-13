@@ -10,7 +10,7 @@ case class ADAMRecord (readInFragment:Int,
                             start:Long,
                             oldPosition:Option[Long],
                             end:Long,
-                            mapq:Long,
+                            mapq:Int,
                             readName:String,
                             sequence:String,
                             qual:String,
@@ -44,7 +44,7 @@ class ADAMRelation (path:String)(@transient val sqlContext: SQLContext)
 
   val spark = sqlContext
     .sparkSession
-  spark.experimental.extraStrategies = new IntervalTreeJoinStrategyOptim(spark) :: Nil
+  //spark.experimental.extraStrategies = new IntervalTreeJoinStrategyOptim(spark) :: Nil
 
   private def parguet = spark.read.parquet(path)
 

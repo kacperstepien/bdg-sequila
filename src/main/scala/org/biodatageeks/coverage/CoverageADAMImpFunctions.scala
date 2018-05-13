@@ -100,6 +100,7 @@ class CoverageReadADAMFunctions(covReadDataset:Dataset[ADAMRecord]) extends Seri
       case _ => cov
     }
     lazy val partCov = covQual
+        //.orderBy(asc("contigName"),asc("start"))
       .sort(asc("contigName"),asc("start"))
       .mapPartitions { partIterator =>
         val covMap = new HashMap[(String, Int), (Array[Array[Int]], Array[Int])]()
@@ -166,8 +167,7 @@ class CoverageReadADAMFunctions(covReadDataset:Dataset[ADAMRecord]) extends Seri
         chrMinMax.append((lastChr, lastPosition))
         Iterator(PartitionCoverageHist(covMap.toMap, maxCigarLength, outputSize, chrMinMax.toArray))//.iterator
       }.persist(StorageLevel.MEMORY_AND_DISK_SER)
-    val maxCigarLengthGlobal = partCov.map(r => r.maxCigarLength)
-      .reduce((a, b) => max(a, b))
+    val maxCigarLengthGlobal = partCov.agg(org.apache.spark.sql.functions.max($"maxCigarLength")).head().getInt(0)
     lazy val combOutput = partCov.mapPartitions { partIterator =>
       /*split for reduction basing on position and max cigar length across all partitions - for gap alignments*/
       val partitionCoverageArray = (partIterator.toArray)
