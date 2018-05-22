@@ -62,7 +62,7 @@ import spark.implicits._
       .as[ADAMRecord]*/
 
     var start = System.nanoTime()
- var coverage = dataset.baseCoverageHistDataset(None, None,CoverageHistParam(CoverageHistType.MAPQ,Array(10,20,30,40))).count
+ var coverage = dataset.baseCoverageHistDataset(None, None,CoverageHistParam(CoverageHistType.MAPQ,Array(10,20,30,40),Array())).count
     //println((System.nanoTime() - start) / 1000)
     println(NANOSECONDS.toSeconds(System.nanoTime() - start));
     //var fileName = new SimpleDateFormat("'/home/kacper/coverage_BAM_'yyyyMMddHHmm'.parquet'").format(new Date())

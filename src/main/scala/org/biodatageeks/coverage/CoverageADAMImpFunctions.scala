@@ -19,6 +19,7 @@ import scala.collection.immutable.Map
 /**
  * Created by kstepien on 04.05.18.
  */
+
 class CoverageReadADAMFunctions(covReadDataset:Dataset[ADAMRecord]) extends Serializable{
 
 
@@ -127,21 +128,58 @@ class CoverageReadADAMFunctions(covReadDataset:Dataset[ADAMRecord]) extends Seri
                   val subIndex = position % numSubArrays
                   val index = position / numSubArrays
 
-                  if (!covMap.keySet.contains(cr.contigName, index)) {
-                    covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.buckets.length),Array.fill[Int](subArraySize)(0) )
-                  }
-                  val params = coverageHistParam.buckets.sortBy(r=>r)
-                  if(coverageHistParam.histType == CoverageHistType.MAPQ) {
+                  if (coverageHistParam.histType == CoverageHistType.MAPQ||
+                    coverageHistParam.histType == CoverageHistType.START||
+                    coverageHistParam.histType == CoverageHistType.END) {
+                    if (!covMap.keySet.contains(cr.contigName, index)) {
+                      covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.bucketsDouble.length),Array.fill[Int](subArraySize)(0) )
+                    }
+                    val params = coverageHistParam.bucketsDouble.sortBy(r=>r)
+                    var splitField = 0
+                    if(coverageHistParam.histType == CoverageHistType.MAPQ) {
+                      splitField = cr.mapq
+                    } else
+                    if(coverageHistParam.histType == CoverageHistType.START) {
+                      splitField = cr.start.toInt
+                    } else
+                    if(coverageHistParam.histType == CoverageHistType.END) {
+                      splitField = cr.end.toInt
+                    }
                     breakable {
                       for (i <- 0 until params.length) {
-                        if ( i < params.length-1  && cr.mapq >= params(i) && cr.mapq < params(i+1)) {
+                        if ( i < params.length-1  && splitField >= params(i) && splitField < params(i+1)) {
                           covMap(cr.contigName, index)._1(subIndex)(i) += 1
                           break
                         }
                       }
 
                     }
-                    if (cr.mapq >= params.last) covMap(cr.contigName, index)._1(subIndex)(params.length-1) += 1
+                    if (splitField >= params.last) covMap(cr.contigName, index)._1(subIndex)(params.length-1) += 1
+                  } else
+                  if (coverageHistParam.histType == CoverageHistType.CONTIGNAME ||
+                    coverageHistParam.histType == CoverageHistType.CIGAR ||
+                    coverageHistParam.histType == CoverageHistType.BASEQ) {
+                    if (!covMap.keySet.contains(cr.contigName, index)) {
+                      covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.bucketsString.length),Array.fill[Int](subArraySize)(0) )
+                    }
+                    val params = coverageHistParam.bucketsString.sortBy(r=>r)
+                    var splitField = ""
+                    if(coverageHistParam.histType == CoverageHistType.CONTIGNAME) {
+                      splitField = cr.contigName
+                    } else if(coverageHistParam.histType == CoverageHistType.CIGAR) {
+                      splitField = cr.cigar
+                    } else if(coverageHistParam.histType == CoverageHistType.BASEQ) {
+                      splitField = cr.qual
+                    }
+                    breakable {
+                      for (i <- 0 until params.length) {
+                        if ( i < params.length-1  && splitField == params(i)) {
+                          covMap(cr.contigName, index)._1(subIndex)(i) += 1
+                          break
+                        }
+                      }
+
+                    }
                   }
                   else throw new Exception("Unsupported histogram parameter")
 

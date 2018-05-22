@@ -5,5 +5,11 @@ package org.biodatageeks.coverage
   */
 object CoverageHistType extends Enumeration{
   type CoverageHistType = Value
-  val MAPQ = Value
+  val MAPQ,
+  SAMPLEID,
+  CONTIGNAME,
+  START,
+  END,
+  CIGAR,
+  BASEQ= Value
 }

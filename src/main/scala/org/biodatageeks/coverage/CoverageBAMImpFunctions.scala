@@ -71,7 +71,8 @@ case class PartitionCoverageHist(covMap: Map[(String, Int), (Array[Array[Int]],A
 
 case class CoverageHistParam(
                               histType : CoverageHistType,
-                              buckets: Array[Double]
+                              bucketsDouble: Array[Double],
+                              bucketsString: Array[String]
                             )
 
 class CoverageReadBAMFunctions(covReadDataset:Dataset[BAMRecord]) extends Serializable{
@@ -166,61 +167,6 @@ class CoverageReadBAMFunctions(covReadDataset:Dataset[BAMRecord]) extends Serial
         var lastChr = "NA"
         var lastPosition = 0
         var outputSize = 0
-        /*partIterator.map (
-          cr => {
-            val cigar = TextCigarCodec.decode(cr.cigar)
-            val cigInterator = cigar.getCigarElements.iterator()
-            var position = cr.start
-            val cigarStartPosition = position
-            while (cigInterator.hasNext) {
-              val cigarElement = cigInterator.next()
-              val cigarOpLength = cigarElement.getLength
-              val cigarOp = cigarElement.getOperator
-              cigarOp match {
-                case CigarOperator.M | CigarOperator.X | CigarOperator.EQ =>
-                  var currPosition = 0
-                  while (currPosition < cigarOpLength) {
-                    val subIndex = position % numSubArrays
-                    val index = position / numSubArrays
-
-                    if (!covMap.keySet.contains(cr.contigName, index)) {
-                      covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.buckets.length),Array.fill[Int](subArraySize)(0) )
-                    }
-                    val params = coverageHistParam.buckets.sortBy(r=>r)
-                    if(coverageHistParam.histType == CoverageHistType.MAPQ) {
-                      breakable {
-                        for (i <- 0 until params.length) {
-                          if ( i < params.length-1  && cr.mapq >= params(i) && cr.mapq < params(i+1)) {
-                            covMap(cr.contigName, index)._1(subIndex)(i) += 1
-                            break
-                          }
-                        }
-
-                      }
-                      if (cr.mapq >= params.last) covMap(cr.contigName, index)._1(subIndex)(params.length-1) += 1
-                    }
-                    else throw new Exception("Unsupported histogram parameter")
-
-
-                    covMap(cr.contigName, index)._2(subIndex) += 1
-
-                    position += 1
-                    currPosition += 1
-                    /*add first*/
-                    if (outputSize == 0) chrMinMax.append((cr.contigName, position))
-                    if (covMap(cr.contigName, index)._2(subIndex) == 1) outputSize += 1
-
-                  }
-                case CigarOperator.N | CigarOperator.D => position += cigarOpLength
-                case _ => None
-              }
-            }
-            val currLength = position - cigarStartPosition
-            if (maxCigarLength < currLength) maxCigarLength = currLength
-            lastPosition = position
-            lastChr = cr.contigName
-          }
-        )*/
         for (cr <- partIterator) {
           val cigar = TextCigarCodec.decode(cr.cigar)
           val cigInterator = cigar.getCigarElements.iterator()
@@ -237,22 +183,67 @@ class CoverageReadBAMFunctions(covReadDataset:Dataset[BAMRecord]) extends Serial
                   val subIndex = position % numSubArrays
                   val index = position / numSubArrays
 
-                  if (!covMap.keySet.contains(cr.contigName, index)) {
-                    covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.buckets.length),Array.fill[Int](subArraySize)(0) )
-                  }
-                  val params = coverageHistParam.buckets.sortBy(r=>r)
-                  if(coverageHistParam.histType == CoverageHistType.MAPQ) {
-                    breakable {
+
+
+
+                  if (coverageHistParam.histType == CoverageHistType.MAPQ||
+                    coverageHistParam.histType == CoverageHistType.START||
+                    coverageHistParam.histType == CoverageHistType.END) {
+                    if (!covMap.keySet.contains(cr.contigName, index)) {
+                      covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.bucketsDouble.length),Array.fill[Int](subArraySize)(0) )
+                    }
+                    val params = coverageHistParam.bucketsDouble.sortBy(r=>r)
+                    var splitField = 0
+                    if(coverageHistParam.histType == CoverageHistType.MAPQ) {
+                      splitField = cr.mapq
+                    } else
+                    if(coverageHistParam.histType == CoverageHistType.START) {
+                      splitField = cr.start
+                    } else
+                    if(coverageHistParam.histType == CoverageHistType.END) {
+                      splitField = cr.end
+                    }
+                      breakable {
                       for (i <- 0 until params.length) {
-                        if ( i < params.length-1  && cr.mapq >= params(i) && cr.mapq < params(i+1)) {
+                        if ( i < params.length-1  && splitField >= params(i) && splitField < params(i+1)) {
                           covMap(cr.contigName, index)._1(subIndex)(i) += 1
                           break
                         }
                       }
 
                     }
-                    if (cr.mapq >= params.last) covMap(cr.contigName, index)._1(subIndex)(params.length-1) += 1
+                    if (splitField >= params.last) covMap(cr.contigName, index)._1(subIndex)(params.length-1) += 1
+                  } else
+                  if (coverageHistParam.histType == CoverageHistType.CONTIGNAME ||
+                    coverageHistParam.histType == CoverageHistType.CIGAR ||
+                    coverageHistParam.histType == CoverageHistType.BASEQ ||
+                  coverageHistParam.histType == CoverageHistType.SAMPLEID) {
+                    if (!covMap.keySet.contains(cr.contigName, index)) {
+                      covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.bucketsString.length),Array.fill[Int](subArraySize)(0) )
+                    }
+                    val params = coverageHistParam.bucketsString.sortBy(r=>r)
+                    var splitField = ""
+                    if(coverageHistParam.histType == CoverageHistType.CONTIGNAME) {
+                      splitField = cr.contigName
+                    } else if(coverageHistParam.histType == CoverageHistType.CIGAR) {
+                      splitField = cr.cigar
+                    } else if(coverageHistParam.histType == CoverageHistType.BASEQ) {
+                      splitField = cr.baseq
+                    } else if(coverageHistParam.histType == CoverageHistType.SAMPLEID) {
+                      splitField = cr.sampleId
+                    }
+                    breakable {
+                      for (i <- 0 until params.length) {
+                        if ( i < params.length-1  && splitField == params(i)) {
+                          covMap(cr.contigName, index)._1(subIndex)(i) += 1
+                          break
+                        }
+                      }
+
+                    }
                   }
+
+
                   else throw new Exception("Unsupported histogram parameter")
 
 

@@ -64,7 +64,7 @@ class CoverageTestSuite extends FunSuite with DataFrameSuiteBase with BeforeAndA
 
     //dataset.foreach(rec => println(rec.start + " " + rec.contigName + " "+ rec.mapq +  " " + rec.cigar))
     val covDF = spark.read.load(covPath).as[CoverageRecordSlimHist]
-    val coverage = setSchema(dataset.baseCoverageHistDataset(None, None,CoverageHistParam(CoverageHistType.MAPQ,Array(10,20,30,40))).toDF,covDF.schema).as[CoverageRecordSlimHist]
+    val coverage = setSchema(dataset.baseCoverageHistDataset(None, None,CoverageHistParam(CoverageHistType.MAPQ,Array(10,20,30,40),Array())).toDF,covDF.schema).as[CoverageRecordSlimHist]
 
     //setSchema(coverage.toDF,covDF.schema).as[CoverageRecordSlimHist].printSchema()
     //coverage.orderBy(desc("coverageTotal")).show()
@@ -169,7 +169,7 @@ class CoverageTestSuite extends FunSuite with DataFrameSuiteBase with BeforeAndA
     //dataset.select(col("contigName"),col("start"),col("mapq"),col("cigar")).show()
     //dataset.show()
     val covDF = spark.read.load(covPath).as[CoverageRecordSlimHist]
-    val coverage = setSchema(dataset.baseCoverageHistDataset(None, None,CoverageHistParam(CoverageHistType.MAPQ,Array(10,20,30,40))).toDF,covDF.schema).as[CoverageRecordSlimHist]
+    val coverage = setSchema(dataset.baseCoverageHistDataset(None, None,CoverageHistParam(CoverageHistType.MAPQ,Array(10,20,30,40),Array())).toDF,covDF.schema).as[CoverageRecordSlimHist]
 
     //setSchema(coverage.toDF,covDF.schema).as[CoverageRecordSlimHist].printSchema()
     //coverage.orderBy(desc("coverageTotal")).show()
