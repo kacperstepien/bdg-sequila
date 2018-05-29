@@ -1,6 +1,7 @@
 package org.biodatageeks.R;
 
 import org.apache.spark.sql.SparkSession;
+import org.biodatageeks.coverage.Static;
 import org.biodatageeks.utils.SequilaRegister;
 
 public class SequilaR {
@@ -17,5 +18,9 @@ public class SequilaR {
 
         SequilaRegister.register(spark);
 
+    }
+
+    public static void coverage(SparkSession spark, String inputPath, String outputPath, String histTypeName, double[] bucketsDouble/*, String[] bucketsString*/) {
+        Static.coverage(spark,inputPath,outputPath,histTypeName,bucketsDouble/*,bucketsString*/);
     }
 }
