@@ -14,6 +14,11 @@ RUN Rscript -e "library(sequila)"
 #install ggplot2
 RUN Rscript -e "install.packages('ggplot2')"
 
+#install ggplot2
+RUN Rscript -e "library(ggplot2)"
+RUN Rscript -e "library(dplyr)"
+RUN Rscript -e "library(shiny)"
+
 
 #install jdk8
 RUN apt-get install --yes gnupg2
@@ -44,7 +49,9 @@ ENV JAVA_HOME /usr/lib/jvm/java-8-oracle
 #copy test data
 COPY NA12878.slice.bam /tmp/NA12878.slice.bam
 COPY warmcache.scala /tmp/warmcache.scala
-COPY app.R /srv/shiny-server/myApp/app.R
+COPY ./myApp/ /srv/shiny-server/myApp/
+COPY ./01_hello/ /srv/shiny-server/01_hello/
+COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
 
 ENV BGD_VERSION 0.4-SNAPSHOT
 RUN /root/spark/spark-2.2.1-bin-hadoop2.7/bin/spark-shell --packages org.biodatageeks:bdg-sequila_2.11:${BGD_VERSION} \
