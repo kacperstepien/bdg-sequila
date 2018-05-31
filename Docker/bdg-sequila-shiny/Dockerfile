@@ -49,12 +49,12 @@ ENV JAVA_HOME /usr/lib/jvm/java-8-oracle
 #copy test data
 COPY NA12878.slice.bam /tmp/NA12878.slice.bam
 COPY warmcache.scala /tmp/warmcache.scala
+
 COPY ./myApp/ /srv/shiny-server/myApp/
 COPY ./01_hello/ /srv/shiny-server/01_hello/
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
 
 ENV BGD_VERSION 0.4-SNAPSHOT
+ENV BGD_VERSION 0.4-SNAPSHOT
 RUN /root/spark/spark-2.2.1-bin-hadoop2.7/bin/spark-shell --packages org.biodatageeks:bdg-sequila_2.11:${BGD_VERSION} \
 -i /tmp/warmcache.scala --repositories https://zsibio.ii.pw.edu.pl/nexus/repository/maven-releases/,https://zsibio.ii.pw.edu.pl/nexus/repository/maven-snapshots/
-
-
