@@ -50,8 +50,7 @@ ENV JAVA_HOME /usr/lib/jvm/java-8-oracle
 COPY NA12878.slice.bam /tmp/NA12878.slice.bam
 COPY warmcache.scala /tmp/warmcache.scala
 
-COPY ./myApp/ /srv/shiny-server/myApp/
-COPY ./01_hello/ /srv/shiny-server/01_hello/
+COPY myApp /srv/shiny-server/myApp
 COPY shiny-server.conf /etc/shiny-server/shiny-server.conf
 
 ENV SPARK_HOME /root/spark/spark-2.2.1-bin-hadoop2.7
