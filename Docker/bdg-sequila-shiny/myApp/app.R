@@ -29,46 +29,35 @@ df<-sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% as.d
 #sequila_disconnect(ss)
 cat(file=stderr(),"df<-sequila_sql")
 
-
-
-
 ui <- fluidPage(
-  
-  # App title ----
-  titlePanel("Hello Shiny!"),
-  
-  # Sidebar layout with input and output definitions ----
+  titlePanel("bdg-sequila-shiny"),
   sidebarLayout(
     
-    # Sidebar panel for inputs ----
     sidebarPanel(
       
       #fileInput("file1", "Choose BAM File",multiple=FALSE,
       #          accept = c(                           ".bam")),
-      textOutput("txt"),
+      #textOutput("txt"),
       
+      actionButton("go", "Go"),
+      textInput("txt","Path to bam file","/tmp/NA12878.slice.bam"),
       
-      
-      # Input: Slider for the number of bins ----
       sliderInput(inputId = "bins",
                   label = "Number of bins:",
                   min = 1,
                   max = 50,
                   value = 30),
-      sliderInput(inputId ="sliderRange", label="Position range",
-                  min = min(df$position), max = max(df$position), value = c(quantile(df$position, 0.1),quantile(df$position, 0.75)))
       
+      uiOutput("sliderRange"),
+      uiOutput("detailedCoverage")
       
     ),
     
-    # Main panel for displaying outputs ----
     mainPanel(
       
-      # Output: Histogram ----
       plotOutput(outputId = "covTotalPlot",click = "plot_click"),
-      verbatimTextOutput("info"),
       
-      textOutput("infoTest"),
+      plotOutput(outputId = "covTotalPositionPlot",click = "plot_click"),
       
       plotOutput(outputId = "covDetailedPlot",click = "plot_click")
     )
@@ -77,73 +66,78 @@ ui <- fluidPage(
 
 server <- function(input, output,session) {
   
-  #output$ui <- renderUI({
-  #  if (is.null(input$file))
-  #    return()
-  #  sliderInput(inputId ="sliderRange", label="Position range",
-  #              min = min(df$position), max = max(df$position), value = c(quantile(df$position, 0.1),quantile(df$position, 0.75)))
-    
-  #})
-
+  ##observeEvent(input$go, {
   
- # observeEvent(input$file, {
-   # inFile <- parseFilePaths(roots=c(wd='.'), input$file)
-    #ss <- sequila_connect("local[1]")
+  ##ss <- sequila_connect("local[1]")
+  
+  ##sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '/tmp/NA12878.slice.bam')"))
+  
+  ##df <<- sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% collect() %>% as.data.frame()
+  
+  ##output$sliderRange <- renderUI({
+  ##  sliderInput(inputId ="sliderRange", label="Position range",
+  ##              min = min(df$position), max = max(df$position), value = c(quantile(df$position, 0.1),quantile(df$position, 0.75)))
+  ##})
+  
+  ##})
+  
+  df <- eventReactive(input$go, {
     
-    #sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",inFile,"')"))
+    ss <- sequila_connect("local[1]")
     
-    #df<-sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% collect()%>% mutate(coverage=lapply(strsplit(coverage, split=","),as.numeric)) %>% as.data.frame()
-    #sequila_disconnect(ss)
+    sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",input$txt,"')"))
+    
+    sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% collect() %>% as.data.frame()
+    
+  })
+  
+  output$sliderRange <- renderUI({
+    sliderInput(inputId ="sliderRange", label="Position range",
+                min = min(df()$position), max = max(df()$position), value = c(quantile(df()$position, 0.1),quantile(df()$position, 0.75)))
+  })
+  
+  output$detailedCoverage <- renderUI({
+    sliderInput(inputId ="detailedCoverage", label=paste("Coverage for position: ",quantile(df()$position, 0.5)),
+                min = min(df()$position), max = max(df()$position), value = quantile(df()$position, 0.3))
+  })
+  
+  # observeEvent(input$file, {
+  # inFile <- parseFilePaths(roots=c(wd='.'), input$file)
+  #ss <- sequila_connect("local[1]")
+  
+  #sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",inFile,"')"))
+  
+  #df<-sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% collect()%>% mutate(coverage=lapply(strsplit(coverage, split=","),as.numeric)) %>% as.data.frame()
+  #sequila_disconnect(ss)
   #})
   
   output$covTotalPlot <- renderPlot({
     
-    req(df)
-    
-    #ss <- sequila_connect("local[1]")
-    
-    #sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",input$file1$datapath,"')"))
-    
-    #df<-sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% collect()%>% mutate(coverage=lapply(strsplit(coverage, split=","),as.numeric)) %>% as.data.frame()
-    #sequila_disconnect(ss)
-    
     #x    <- tbl_df(faithful$waiting) %>% filter(val>input$sliderRange[1], val <input$sliderRange[2])
-    dfCovTotalFiltered <- df[df$position>input$sliderRange[1] & df$position<input$sliderRange[2],] 
+    dfCovTotalFiltered <- df()[df()$position>input$sliderRange[1] & df()$position<input$sliderRange[2],] 
     x    <-   dfCovTotalFiltered$coverageTotal
     bins <- seq(min(x), max(x), length.out = input$bins + 1)
     
     ggplot(data=dfCovTotalFiltered, aes(dfCovTotalFiltered$coverageTotal)) + geom_histogram(fill="cornflowerblue",bins=input$bins)
-    #ggplot(data=faithful, aes(x)) + geom_histogram(fill="cornflowerblue",bins=input$bins)
-    #hist(x, breaks = bins, col = "#75AADB", border = "white",
-    #     xlab = "Waiting time to next eruption (in mins)",
-    #    main = "Histogram of waiting times")
   })
   
-  output$info <- renderPrint({
-    req(df)
-    # With base graphics, need to tell it what the x and y variables are.
-    nearPoints(df, input$plot_click, xvar="coverageTotal", yvar="count")
-    # nearPoints() also works with hover and dblclick events
+  observe({
+    updateSliderInput(session, "detailedCoverage", label = paste("Coverage for position: ", input$detailedCoverage))
   })
-  
-  output$infoTest <- renderText({ 
-    paste("You have selected this: " , input$sliderRange[1], " - ",  input$sliderRange[2])
-    paste("You have selected this@@@@@@@@: " , input$detailedCoverage)
-  })
-
   
   output$covDetailedPlot <- renderPlot({
-    req(df)
-    #x    <- tbl_df(faithful$waiting) %>% filter(val>input$sliderRange[1], val <input$sliderRange[2])
-    dfCovDetailedFiltered <- df[df$position>input$sliderRange[1] & df$position<input$sliderRange[2],] 
-    x    <-   dfCovDetailedFiltered
-    bins <- seq(min(x), max(x), length.out = input$bins + 1)
     
-    ggplot(data=dfCovDetailedFiltered, aes(dfCovDetailedFiltered$coverageTotal)) + geom_histogram(fill="cornflowerblue",bins=input$bins)
-    #ggplot(data=faithful, aes(x)) + geom_histogram(fill="cornflowerblue",bins=input$bins)
-    #hist(x, breaks = bins, col = "#75AADB", border = "white",
-    #     xlab = "Waiting time to next eruption (in mins)",
-    #    main = "Histogram of waiting times")
+    dfCovDetailedInitFiltered <- df()[df()$position<input$detailedCoverage[1]+300000 & df()$position>input$detailedCoverage[1]-300000 ,] 
+    dfCovDetailedFiltered <- dfCovDetailedInitFiltered %>% mutate(closestRows=-abs(dfCovDetailedInitFiltered$position-input$detailedCoverage[1])) %>% top_n(8)
+    #dfBucketHist<-data.frame(bucket=rep(c(1:4)),coverage=unlist(dfCovDetailedFiltered$coverage),position=rep(dfCovDetailedFiltered$position,each=4))
+    covLength <- length(dfCovDetailedFiltered$coverage[[1]])
+    dfBucketHist<-data.frame(bucket=rep(c(1:covLength)),coverage=unlist(dfCovDetailedFiltered$coverage),position=rep(dfCovDetailedFiltered$position,each=covLength))
+    ggplot(data=dfBucketHist, aes(bucket,coverage)) + geom_bar(stat="identity",fill="cornflowerblue") + facet_wrap( ~ position, nrow=3)
+  })
+  
+  output$covTotalPositionPlot <- renderPlot({
+    dfCovTotalFiltered <- df()[df()$position>input$sliderRange[1] & df()$position<input$sliderRange[2],]
+    ggplot(data=dfCovTotalFiltered, aes(position,coverageTotal)) + geom_line(color="cornflowerblue")
   })
   
 }
