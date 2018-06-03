@@ -52,4 +52,11 @@ class CoverageTestSuite extends FunSuite with DataFrameSuiteBase with BeforeAndA
 
   }
 
+  test("BAM - coverage table-valued function"){
+    val session: SparkSession = SequilaSession(spark)
+
+    session.experimental.extraStrategies = new CoverageStrategy(session) :: Nil
+    session.sql(s"SELECT * FROM coverage_hist('${tableNameBAM}') WHERE").select("id").collect().map(_(0)).toList
+  }
+
 }

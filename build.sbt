@@ -36,7 +36,7 @@ libraryDependencies += "org.rogach" %% "scallop" % "3.1.2"
 libraryDependencies += "org.hammerlab.bdg-utils" %% "cli" % "0.3.0"
 
 libraryDependencies += "com.github.samtools" % "htsjdk" % "2.14.1"
-
+libraryDependencies += "org.apache.spark" %% "spark-mllib" % "2.2.1"
 
 libraryDependencies += "com.github.potix2" %% "spark-google-spreadsheets" % "0.5.0"
 
