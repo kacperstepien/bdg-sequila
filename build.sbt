@@ -60,6 +60,7 @@ updateOptions := updateOptions.value.withLatestSnapshots(false)
 
 outputStrategy := Some(StdoutOutput)
 
+mainClass in (Compile, run) := Some("org.biodatageeks.preprocessing.coverage.Main")
 
 resolvers ++= Seq(
   "Job Server Bintray" at "https://dl.bintray.com/spark-jobserver/maven",

@@ -188,7 +188,7 @@ class CoverageReadFunctions(covReadRDD:RDD[BAMRecord]) extends Serializable {
                   val index = position / numSubArrays
 
                   if (!covMap.keySet.contains(cr.contigName, index)) {
-                    covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.buckets.length),Array.fill[Int](subArraySize)(0) )
+                    covMap += (cr.contigName, index) -> (Array.ofDim[Int](numSubArrays,coverageHistParam.buckets.length),Array.fill[Int](numSubArrays)(0) )
                   }
                   val params = coverageHistParam.buckets.sortBy(r=>r)
                   if(coverageHistParam.histType == CoverageHistType.MAPQ) {
