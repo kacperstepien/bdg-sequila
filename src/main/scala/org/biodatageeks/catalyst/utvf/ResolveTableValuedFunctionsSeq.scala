@@ -21,6 +21,7 @@ package org.apache.spark.sql
 
 import java.util.Locale
 
+import org.apache.spark.sql.ResolveTableValuedFunctionsSeq.tvf
 import org.apache.spark.sql.catalyst.analysis.{MultiInstanceRelation, TypeCoercion, UnresolvedTableValuedFunction}
 import org.apache.spark.sql.catalyst.expressions.{Alias, Attribute, Expression}
 import org.apache.spark.sql.catalyst.plans.logical._
@@ -74,6 +75,7 @@ object ResolveTableValuedFunctionsSeq extends Rule[LogicalPlan] {
     (ArgumentList(args: _*),
       pf orElse {
         case args =>
+          args.seq
           throw new IllegalArgumentException(
             "Invalid arguments for resolved function: " + args.mkString(", "))
       })
@@ -92,7 +94,18 @@ object ResolveTableValuedFunctionsSeq extends Rule[LogicalPlan] {
       /* coverage_hist(tableName) */
       tvf("table" -> StringType) { case Seq(table: Any) =>
         CoverageHist(table.toString)
-      }),
+      },
+
+      /* coverage_hist(tableName,step) */
+        tvf("table" -> StringType, "step" -> IntegerType) { case Seq(table: Any,step: Integer) =>
+        CoverageHistStep(table.toString,step)
+      },
+      /* coverage_hist(tableName,buckets) */
+      tvf("table" -> StringType, "buckets" -> ArrayType(DoubleType)) { case Seq(table: Any,buckets:Array[Double]) =>
+        CoverageHistBuckets(table.toString,buckets.asInstanceOf[Array[Integer]])
+      }
+
+    ),
     "range" -> Map(
       /* range(end) */
       tvf("end" -> LongType) { case Seq(end: Long) =>
@@ -222,3 +235,88 @@ case class CoverageHist(tableName:String,
     s"Coverage_hist ('$tableName')"
   }
 }
+
+/*coverage_hist*/
+object CoverageHistStep {
+  def apply(tableName:String,step:Integer): CoverageHistStep = {
+    val output = StructType(Seq(
+      StructField("sampleId", StringType, nullable = false),
+      StructField("contigName",StringType,nullable = true),
+      StructField("position",IntegerType,nullable = false),
+      //StructField("coverage",StringType,nullable = false),
+      StructField("coverage",ArrayType(IntegerType,false),nullable = false),
+      StructField("coverageTotal",IntegerType,nullable = false)
+    )
+    ).toAttributes
+    new CoverageHistStep(tableName:String,step:Integer,output)
+  }
+
+}
+
+case class CoverageHistStep(tableName:String,
+                            step:Integer,
+                        output: Seq[Attribute])
+  extends LeafNode with MultiInstanceRelation {
+
+
+  val numElements: BigInt = 1
+
+  def toSQL(): String = {
+
+    s"SELECT sampleId,contigName,position,coverage AS `${output.head.name}` FROM coverage_hist('$tableName',$step)"
+  }
+
+  override def newInstance(): CoverageHistStep = copy(output = output.map(_.newInstance()))
+
+  override def computeStats(conf: SQLConf): Statistics = {
+    val sizeInBytes = LongType.defaultSize * numElements
+    Statistics( sizeInBytes = sizeInBytes )
+  }
+
+  override def simpleString: String = {
+    s"Coverage_hist ('$tableName',$step)"
+  }
+}
+
+/*coverage_hist*/
+object CoverageHistBuckets {
+  def apply(tableName:String,buckets:Array[Integer]): CoverageHistBuckets = {
+    val output = StructType(Seq(
+      StructField("sampleId", StringType, nullable = false),
+      StructField("contigName",StringType,nullable = true),
+      StructField("position",IntegerType,nullable = false),
+      //StructField("coverage",StringType,nullable = false),
+      StructField("coverage",ArrayType(IntegerType,false),nullable = false),
+      StructField("coverageTotal",IntegerType,nullable = false)
+    )
+    ).toAttributes
+    new CoverageHistBuckets(tableName:String,buckets:Array[Integer],output)
+  }
+
+}
+
+case class CoverageHistBuckets(tableName:String,
+                               buckets:Array[Integer],
+                            output: Seq[Attribute])
+  extends LeafNode with MultiInstanceRelation {
+
+
+  val numElements: BigInt = 1
+
+  def toSQL(): String = {
+
+    s"SELECT sampleId,contigName,position,coverage AS `${output.head.name}` FROM coverage_hist('$tableName',$buckets)"
+  }
+
+  override def newInstance(): CoverageHistBuckets = copy(output = output.map(_.newInstance()))
+
+  override def computeStats(conf: SQLConf): Statistics = {
+    val sizeInBytes = LongType.defaultSize * numElements
+    Statistics( sizeInBytes = sizeInBytes )
+  }
+
+  override def simpleString: String = {
+    s"Coverage_hist ('$tableName',$buckets)"
+  }
+}
+

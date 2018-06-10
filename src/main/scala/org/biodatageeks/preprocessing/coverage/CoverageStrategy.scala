@@ -21,6 +21,8 @@ class CoverageStrategy(spark: SparkSession) extends Strategy with Serializable  
 
     case Coverage(tableName,output) => CoveragePlan(plan,spark,tableName,output) :: Nil
     case CoverageHist(tableName,output) => CoverageHistPlan(plan,spark,tableName,output) :: Nil
+    case CoverageHistStep(tableName,step,output) => CoverageHistStepPlan(plan,spark,tableName,step,output) :: Nil
+    case CoverageHistBuckets(tableName,buckets,output) => CoverageHistBucketsPlan(plan,spark,tableName,buckets,output) :: Nil
     case _ => Nil
   }
 
@@ -68,6 +70,66 @@ case class CoverageHistPlan(plan: LogicalPlan, spark: SparkSession, table:String
             UTF8String.fromString(r.chr),
             r.position,
            exprEnc.toRow(r.coverage).getArray(0),
+            //UTF8String.fromString(r.coverage.mkString(",") ),
+            r.coverageTotal) ) ) )
+      })
+    //spark.sparkContext.emptyRDD[InternalRow]
+  }
+  def children: Seq[SparkPlan] = Nil
+}
+
+case class CoverageHistStepPlan(plan: LogicalPlan, spark: SparkSession, table:String,step:Integer, output: Seq[Attribute]) extends SparkPlan with Serializable {
+
+  def doExecute(): org.apache.spark.rdd.RDD[InternalRow] = {
+    import spark.implicits._
+    val ds = spark.sql(s"select * FROM ${table}")
+      .as[BAMRecord]
+      .filter(r=>r.contigName != null)
+    val schema = plan.schema
+    val params = CoverageHistParam(CoverageHistType.MAPQ,(0 to 100 by step).toArray.map(x=>x.toDouble))
+    val cov = ds.rdd.baseCoverageHist(Some(0),None,params)
+    //    val emptyIntArray =
+    //      ExpressionEncoder[Array[Int]]().resolveAndBind().toRow(Array.emptyIntArray).getArray(0)
+    cov
+      .mapPartitions(p=>{
+        val proj =  UnsafeProjection.create(schema)
+        val exprEnc =  ExpressionEncoder[Array[Int]]().resolveAndBind()
+        p.map(r=>   proj.apply(InternalRow.fromSeq(
+          Seq(
+            UTF8String.fromString(r.sampleId),
+            UTF8String.fromString(r.contigName),
+            r.position,
+            exprEnc.toRow(r.coverage).getArray(0),
+            //UTF8String.fromString(r.coverage.mkString(",") ),
+            r.coverageTotal) ) ) )
+      })
+    //spark.sparkContext.emptyRDD[InternalRow]
+  }
+  def children: Seq[SparkPlan] = Nil
+}
+
+case class CoverageHistBucketsPlan(plan: LogicalPlan, spark: SparkSession, table:String,buckets:Array[Integer], output: Seq[Attribute]) extends SparkPlan with Serializable {
+
+  def doExecute(): org.apache.spark.rdd.RDD[InternalRow] = {
+    import spark.implicits._
+    val ds = spark.sql(s"select * FROM ${table}")
+      .as[BAMRecord]
+      .filter(r=>r.contigName != null)
+    val schema = plan.schema
+    val params = CoverageHistParam(CoverageHistType.MAPQ,buckets.map(x=>x.toDouble))
+    val cov = ds.rdd.baseCoverageHist(Some(0),None,params)
+    //    val emptyIntArray =
+    //      ExpressionEncoder[Array[Int]]().resolveAndBind().toRow(Array.emptyIntArray).getArray(0)
+    cov
+      .mapPartitions(p=>{
+        val proj =  UnsafeProjection.create(schema)
+        val exprEnc =  ExpressionEncoder[Array[Int]]().resolveAndBind()
+        p.map(r=>   proj.apply(InternalRow.fromSeq(
+          Seq(
+            UTF8String.fromString(r.sampleId),
+            UTF8String.fromString(r.contigName),
+            r.position,
+            exprEnc.toRow(r.coverage).getArray(0),
             //UTF8String.fromString(r.coverage.mkString(",") ),
             r.coverageTotal) ) ) )
       })
