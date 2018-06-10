@@ -40,7 +40,7 @@ case class CoveragePlan(plan: LogicalPlan, spark: SparkSession, table:String, ou
       .mapPartitions(p=>{
        val proj =  UnsafeProjection.create(schema)
        p.map(r=>   proj.apply(InternalRow.fromSeq(Seq(UTF8String.fromString(r.sampleId),
-          UTF8String.fromString(r.chr),r.position,r.coverage))))
+          UTF8String.fromString(r.contigName),r.position,r.coverage))))
       })
   }
 
@@ -67,7 +67,7 @@ case class CoverageHistPlan(plan: LogicalPlan, spark: SparkSession, table:String
         p.map(r=>   proj.apply(InternalRow.fromSeq(
           Seq(
             UTF8String.fromString(r.sampleId),
-            UTF8String.fromString(r.chr),
+            UTF8String.fromString(r.contigName),
             r.position,
            exprEnc.toRow(r.coverage).getArray(0),
             //UTF8String.fromString(r.coverage.mkString(",") ),

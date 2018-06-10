@@ -11,12 +11,12 @@ import scala.collection.mutable.ArrayBuffer
 
 
 case class CoverageRecord(sampleId:String,
-                              chr:String,
+                          contigName:String,
                               position:Int,
                               coverage:Int)
 
 case class CoverageRecordHist(sampleId:String,
-                                  chr:String,
+                              contigName:String,
                                   position:Int,
                                   coverage:Array[Int],
                                   coverageTotal:Int)
@@ -139,8 +139,8 @@ class CoverageReadFunctions(covReadRDD:RDD[BAMRecord]) extends Serializable {
           Iterator(output)
         }
         //partCov.unpersist()
-        lazy val covReduced = combOutput.flatMap(r => r.array(1)).map(r => ((r.chr, r.position), r))
-          .reduceByKey((a, b) => CoverageRecord(sampleId,a.chr, a.position, a.coverage + b.coverage))
+        lazy val covReduced = combOutput.flatMap(r => r.array(1)).map(r => ((r.contigName, r.position), r))
+          .reduceByKey((a, b) => CoverageRecord(sampleId,a.contigName, a.position, a.coverage + b.coverage))
           .map(_._2)
         partCov.unpersist()
         combOutput.flatMap(r => (r.array(0)))
@@ -259,8 +259,8 @@ class CoverageReadFunctions(covReadRDD:RDD[BAMRecord]) extends Serializable {
       Iterator(output)
     }
     //partCov.unpersist()
-    lazy val covReduced =  combOutput.flatMap(r=>r.array(1)).map(r=>((r.chr,r.position),r))
-      .reduceByKey((a,b)=>CoverageRecordHist(sampleId,a.chr,a.position,sumArrays(a.coverage,b.coverage),a.coverageTotal+b.coverageTotal)).map(_._2)
+    lazy val covReduced =  combOutput.flatMap(r=>r.array(1)).map(r=>((r.contigName,r.position),r))
+      .reduceByKey((a,b)=>CoverageRecordHist(sampleId,a.contigName,a.position,sumArrays(a.coverage,b.coverage),a.coverageTotal+b.coverageTotal)).map(_._2)
     partCov.unpersist()
     combOutput.flatMap(r => (r.array(0)))
       .union(covReduced)
