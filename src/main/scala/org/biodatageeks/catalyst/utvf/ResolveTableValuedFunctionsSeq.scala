@@ -75,7 +75,6 @@ object ResolveTableValuedFunctionsSeq extends Rule[LogicalPlan] {
     (ArgumentList(args: _*),
       pf orElse {
         case args =>
-          args.seq
           throw new IllegalArgumentException(
             "Invalid arguments for resolved function: " + args.mkString(", "))
       })
