@@ -58,6 +58,14 @@ ENV SPARK_HOME /root/spark/spark-2.2.1-bin-hadoop2.7
 ENV BGD_VERSION 0.4-SNAPSHOT
 RUN /root/spark/spark-2.2.1-bin-hadoop2.7/bin/spark-shell --packages org.biodatageeks:bdg-sequila_2.11:${BGD_VERSION} \
 -i /tmp/warmcache.scala --repositories https://zsibio.ii.pw.edu.pl/nexus/repository/maven-releases/,https://zsibio.ii.pw.edu.pl/nexus/repository/maven-snapshots/
-ENV PATH $PATH:$SPARK_HOME/bin
-#RUN hadoop dfs -mkdir /user/shiny
-#RUN hadoop dfs -chown -R shiny /user/shiny
+
+RUN chmod a+x /root
+RUN chmod a+x /root/spark
+RUN chmod a+x /root/spark/spark-2.2.1-bin-hadoop2.7
+RUN chmod a+x /root/spark/spark-2.2.1-bin-hadoop2.7/bin
+RUN chmod +x /root/spark/spark-2.2.1-bin-hadoop2.7/bin/spark-shell
+
+USER shiny
+
+RUN /root/spark/spark-2.2.1-bin-hadoop2.7/bin/spark-shell --packages org.biodatageeks:bdg-sequila_2.11:${BGD_VERSION} \
+-i /tmp/warmcache.scala --repositories https://zsibio.ii.pw.edu.pl/nexus/repository/maven-releases/,https://zsibio.ii.pw.edu.pl/nexus/repository/maven-snapshots/
