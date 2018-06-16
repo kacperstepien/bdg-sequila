@@ -48,7 +48,7 @@ ui <- fluidPage(
                   value = 30),
       
       selectInput("mapQSize", "MapQ buckets size:",
-                  c(1,2,4,5,10,20,25,50,100)),
+                  c(1,2,4,5,10,20,25,50,100),selected = 20),
       
       uiOutput("sliderRange"),
       uiOutput("detailedCoverage")
@@ -92,9 +92,10 @@ server <- function(input, output,session) {
     print(input$txt)
     print(input$mapQSize)
     print(paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",input$txt,"')", sep = ""))
+    sequila_sql(ss,'reads',"DROP TABLE IF EXISTS reads")
     sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",input$txt,"')", sep = ""))
     
-    sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% collect() %>% as.data.frame()
+    sequila_sql(ss, 'coverage', paste("SELECT * FROM coverage_hist('reads',",input$mapQSize,")", sep = "")) %>% collect() %>% as.data.frame()
     
   })
   
