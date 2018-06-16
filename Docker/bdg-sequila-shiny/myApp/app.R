@@ -1,18 +1,8 @@
-sink(stderr(), type = "output")
-sink(stderr(), type = "message")
 library(shiny)
-cat(file=stderr(),"library(shiny)")
 #library('SparkR')
 library(ggplot2)
-cat(file=stderr(),"library(ggplot2)")
 library(dplyr)
-cat(file=stderr(),"library(dplyr)")
-library(sparklyr)
-cat(file=stderr(),"library(sparklyr)")
-Sys.setenv(SPARK_HOME = '/root/spark/spark-2.2.1-bin-hadoop2.7')
-print(spark_installed_versions())
 library(sequila)
-cat(file=stderr(),"library(sequila)")
 #Sys.setenv(SPARK_HOME = "/usr/local/spark")
 #Sys.setenv(SPARK_HOME = "/usr/local/spark")
 #library(SparkR, lib.loc = c(file.path(Sys.getenv("SPARK_HOME"), "R", "lib")))
@@ -21,20 +11,27 @@ cat(file=stderr(),"library(sequila)")
 #df<-as.data.frame(read.parquet( "coverage_dataset.parquet"))
 #df<-dfConst
 
-ss <- sequila_connect("local[1]")
-cat(file=stderr(),"ss <- sequila_connect('local[1]')")
-sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '/tmp/NA12878.slice.bam')"))
-cat(file=stderr(),"sequila_sql")
-df<-sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% as.data.frame()
+#ss <- sequila_connect("local[1]")
+
+#sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '/tmp/NA12878.slice.bam')"))
+
+#df<-sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% as.data.frame()
 #sequila_disconnect(ss)
-cat(file=stderr(),"df<-sequila_sql")
 
 ui <- fluidPage(
+
+  tags$style(type="text/css",
+                 ".shiny-output-error { visibility: hidden; }",
+                 ".shiny-output-error:before { visibility: hidden; }"
+  ),
   titlePanel("bdg-sequila-shiny"),
   sidebarLayout(
     
+    # Sidebar panel for inputs ----
     sidebarPanel(
       
+	
+
       #fileInput("file1", "Choose BAM File",multiple=FALSE,
       #          accept = c(                           ".bam")),
       #textOutput("txt"),
@@ -42,19 +39,26 @@ ui <- fluidPage(
       actionButton("go", "Go"),
       textInput("txt","Path to bam file","/tmp/NA12878.slice.bam"),
       
+      
+      # Input: Slider for the number of bins ----
       sliderInput(inputId = "bins",
                   label = "Number of bins:",
                   min = 1,
                   max = 50,
                   value = 30),
       
+      selectInput("mapQSize", "MapQ buckets size:",
+                  c(1,2,4,5,10,20,25,50,100)),
+      
       uiOutput("sliderRange"),
       uiOutput("detailedCoverage")
       
     ),
     
+    # Main panel for displaying outputs ----
     mainPanel(
       
+      # Output: Histogram ----
       plotOutput(outputId = "covTotalPlot",click = "plot_click"),
       
       plotOutput(outputId = "covTotalPositionPlot",click = "plot_click"),
@@ -85,7 +89,10 @@ server <- function(input, output,session) {
     
     ss <- sequila_connect("local[1]")
     
-    sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",input$txt,"')"))
+    print(input$txt)
+    print(input$mapQSize)
+    print(paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",input$txt,"')", sep = ""))
+    sequila_sql(ss,'reads',paste("CREATE TABLE IF NOT EXISTS reads USING org.biodatageeks.datasources.BAM.BAMDataSource OPTIONS(path '",input$txt,"')", sep = ""))
     
     sequila_sql(ss, 'coverage', "SELECT * FROM coverage_hist('reads')") %>% collect() %>% as.data.frame()
     
