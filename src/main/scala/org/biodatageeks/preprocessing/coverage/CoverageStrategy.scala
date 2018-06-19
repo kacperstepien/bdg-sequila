@@ -86,7 +86,7 @@ case class CoverageHistStepPlan(plan: LogicalPlan, spark: SparkSession, table:St
       .as[BAMRecord]
       .filter(r=>r.contigName != null)
     val schema = plan.schema
-    val params = CoverageHistParam(CoverageHistType.MAPQ,(0 to 100 by step).toArray.map(x=>x.toDouble))
+    val params = CoverageHistParam(CoverageHistType.MAPQ,(0 to 255 by step).toArray.map(x=>x.toDouble))
     val cov = ds.rdd.baseCoverageHist(Some(0),None,params)
     //    val emptyIntArray =
     //      ExpressionEncoder[Array[Int]]().resolveAndBind().toRow(Array.emptyIntArray).getArray(0)
