@@ -48,7 +48,7 @@ ui <- fluidPage(
                   value = 30),
       
       selectInput("mapQSize", "MapQ buckets size:",
-                  c(1,2,4,5,10,20,25,50,100),selected = 20),
+                  c(1,2,4,8,16,32,64,128),selected = 32),
       
       uiOutput("sliderRange"),
       uiOutput("detailedCoverage")
