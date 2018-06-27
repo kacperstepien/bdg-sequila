@@ -1,10 +1,16 @@
 package org.biodatageeks.preprocessing.coverage
 
+import breeze.numerics.{exp, log}
 import htsjdk.samtools.{Cigar, CigarOperator, SAMUtils, TextCigarCodec}
+import org.apache.commons.math3.stat.StatUtils
 import org.apache.spark.rdd.RDD
+import org.apache.spark.sql.{Dataset, SQLContext}
 import org.apache.spark.storage.StorageLevel
 import org.biodatageeks.datasources.BAM.BAMRecord
 import org.biodatageeks.preprocessing.coverage.CoverageHistType.CoverageHistType
+import org.biodatageeks.preprocessing.coverage.NormalizationType.NormalizationType
+//import org.biodatageeks.preprocessing.coverage.NormalizationType.NormalizationType
+
 import scala.util.control.Breaks._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -282,3 +288,119 @@ object CoverageReadFunctions {
   }
 }
 
+object NormalizationType extends Enumeration{
+  type NormalizationType = Value
+  val DESeq2 = Value
+}
+
+object CountNormalization {
+
+  def estimateNormFactors(covRDD: RDD[CoverageRecord], normType: NormalizationType) = {
+
+    normType match {
+      case NormalizationType.DESeq2 => Some(deseq2Factor(covRDD) )
+      case _ => None
+
+    }
+
+  }
+
+  def normalize(covRdd:RDD[CoverageRecord], normType: NormalizationType, numTasks:Option[Int]= None) = {
+    val factors = covRdd
+      .sparkContext
+      .broadcast{
+        val factorsMap = new mutable.HashMap[String,Double]()
+        val rdd = normType match {
+          case NormalizationType.DESeq2 => deseq2Factor(covRdd, numTasks)
+          case _ => deseq2Factor(covRdd, numTasks) //FIXME:Change to None and add pattern matching
+        }
+        rdd.foreach{case (sampleId,factor) => factorsMap(sampleId) = factor}
+        factorsMap
+      }
+
+    covRdd.map{
+      case r:CoverageRecord => {
+        r.copy(coverage = (r.coverage/factors.value(r.sampleId).toInt ) )
+      }
+    }
+
+  }
+
+  private def deseq2Factor(covRDD: RDD[CoverageRecord], numTasks:Option[Int] = None) = {
+
+    //val logMean = StatUtils.mean(counts.map(r=>log10(r)))
+    val sortedRdd = {
+      numTasks match {
+        case Some(n) => covRDD.repartition(n)
+        case _ => covRDD
+      }
+    }.persist(StorageLevel.MEMORY_AND_DISK_SER)
+      .map { case c: CoverageRecord => ((c.contigName, c.position), Array((c.sampleId, c.coverage))) }
+      .reduceByKey((a, b) => a ++ b)
+      .sortByKey()
+      .mapValues(r => r.sortBy(r => r._1))
+
+
+    val logMeanRdd = sortedRdd
+      .map{case ((chr,position),covArray) =>  ( (chr,position),StatUtils.mean(covArray.map(k => log(k._2) ) ) ) }
+
+    val distinctSamplesSorted = covRDD.map { case c: CoverageRecord => c.sampleId }
+      .distinct()
+      .collect()
+      .sortBy(r => r)
+
+    val samplesRDD = for(s<-distinctSamplesSorted) yield {
+      covRDD
+        .filter{c:CoverageRecord=>c.sampleId == s}
+        .map(r=>((r.contigName,r.position),(r.coverage) ) )
+    }
+
+    val factors = for(i <- 0 to samplesRDD.length - 1) yield {
+      exp(
+        medianFromRDD(
+          samplesRDD(i)
+            .join(logMeanRdd)
+            .mapValues{case (cnt,logMean)=> log(cnt) - logMean }
+            .map(r=>r._2)
+        )
+      )
+    }
+    val factorsWithSamples = for(i<-0 to factors.length-1) yield {
+      (distinctSamplesSorted(i),factors(i))
+    }
+    factorsWithSamples
+  }
+
+  def medianFromRDD(rdd:RDD[Double]) = {
+
+    val sorted = rdd.sortBy(identity).zipWithIndex().map {
+      case (v, idx) => (idx, v)
+    }
+
+    val count = sorted.count()
+
+    val median: Double = if (count % 2 == 0) {
+      val l = count / 2 - 1
+      val r = l + 1
+      (sorted.lookup(l).head + sorted.lookup(r).head).toDouble / 2
+    }
+    else sorted.lookup(count / 2).head.toDouble
+
+    median
+  }
+
+}
+
+class CoverageFunctions(coverageRDD:RDD[CoverageRecord]) extends Serializable {
+
+    val sqlContext = new SQLContext(coverageRDD.sparkContext)
+
+    def normalize(normType:NormalizationType = NormalizationType.DESeq2, numTasks: Option[Int] = None )={
+      CountNormalization.normalize(coverageRDD, normType, numTasks)
+    }
+}
+
+object CoverageFunctions {
+  implicit def addCoverageFunctions(rdd: RDD[CoverageRecord]) = new
+      CoverageFunctions(rdd)
+}

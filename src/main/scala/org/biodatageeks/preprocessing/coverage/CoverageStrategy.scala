@@ -12,6 +12,8 @@ import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.unsafe.types.UTF8String
 import org.biodatageeks.datasources.BAM.BAMRecord
 import org.biodatageeks.preprocessing.coverage.CoverageReadFunctions._
+import org.biodatageeks.preprocessing.coverage.CoverageFunctions._
+
 
 import scala.collection.mutable
 
@@ -20,6 +22,7 @@ class CoverageStrategy(spark: SparkSession) extends Strategy with Serializable  
   def apply(plan: LogicalPlan): Seq[SparkPlan] = plan match {
 
     case Coverage(tableName,output) => CoveragePlan(plan,spark,tableName,output) :: Nil
+    case CoverageNorm(tableName,output) => CoverageNormPlan(plan,spark,tableName,output) :: Nil
     case CoverageHist(tableName,output) => CoverageHistPlan(plan,spark,tableName,output) :: Nil
     case CoverageHistStep(tableName,step,output) => CoverageHistStepPlan(plan,spark,tableName,step,output) :: Nil
     case CoverageHistBuckets(tableName,buckets,output) => CoverageHistBucketsPlan(plan,spark,tableName,buckets,output) :: Nil
@@ -40,6 +43,26 @@ case class CoveragePlan(plan: LogicalPlan, spark: SparkSession, table:String, ou
       .mapPartitions(p=>{
        val proj =  UnsafeProjection.create(schema)
        p.map(r=>   proj.apply(InternalRow.fromSeq(Seq(UTF8String.fromString(r.sampleId),
+          UTF8String.fromString(r.contigName),r.position,r.coverage))))
+      })
+  }
+
+
+  def children: Seq[SparkPlan] = Nil
+}
+
+case class CoverageNormPlan(plan: LogicalPlan, spark: SparkSession, table:String, output: Seq[Attribute]) extends SparkPlan with Serializable {
+  def doExecute(): org.apache.spark.rdd.RDD[InternalRow] = {
+    import spark.implicits._
+    val ds = spark.sql(s"select * FROM ${table}")
+      .as[BAMRecord]
+      .filter(r=>r.contigName != null)
+    val schema = plan.schema
+    val cov = ds.rdd.baseCoverage(None,Some(4),sorted=false).normalize()
+    cov
+      .mapPartitions(p=>{
+        val proj =  UnsafeProjection.create(schema)
+        p.map(r=>   proj.apply(InternalRow.fromSeq(Seq(UTF8String.fromString(r.sampleId),
           UTF8String.fromString(r.contigName),r.position,r.coverage))))
       })
   }
@@ -86,7 +109,7 @@ case class CoverageHistStepPlan(plan: LogicalPlan, spark: SparkSession, table:St
       .as[BAMRecord]
       .filter(r=>r.contigName != null)
     val schema = plan.schema
-    val params = CoverageHistParam(CoverageHistType.MAPQ,(0 to 100 by step).toArray.map(x=>x.toDouble))
+    val params = CoverageHistParam(CoverageHistType.MAPQ,(0 to 255 by step).toArray.map(x=>x.toDouble))
     val cov = ds.rdd.baseCoverageHist(Some(0),None,params)
     //    val emptyIntArray =
     //      ExpressionEncoder[Array[Int]]().resolveAndBind().toRow(Array.emptyIntArray).getArray(0)

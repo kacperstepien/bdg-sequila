@@ -89,6 +89,11 @@ object ResolveTableValuedFunctionsSeq extends Rule[LogicalPlan] {
       tvf("table" -> StringType) { case Seq(table: Any) =>
         Coverage(table.toString)
       }),
+    "coverage_norm" -> Map(
+      /* coverage(tableName) */
+      tvf("table" -> StringType) { case Seq(table: Any) =>
+        CoverageNorm(table.toString)
+      }),
     "coverage_hist" -> Map(
       /* coverage_hist(tableName) */
       tvf("table" -> StringType) { case Seq(table: Any) =>
@@ -193,6 +198,44 @@ case class Coverage(tableName:String,
   }
 }
 
+/** Factory for constructing new `CoverageNorm` nodes. */
+object CoverageNorm {
+  def apply(tableName:String): CoverageNorm = {
+    val output = StructType(Seq(
+      StructField("sampleId", StringType, nullable = false),
+      StructField("contigName",StringType,nullable = true),
+      StructField("position",IntegerType,nullable = false),
+      StructField("coverage",IntegerType,nullable = false)
+    )
+    ).toAttributes
+    new CoverageNorm(tableName:String,output)
+  }
+
+}
+
+case class CoverageNorm(tableName:String,
+                    output: Seq[Attribute])
+  extends LeafNode with MultiInstanceRelation {
+
+
+  val numElements: BigInt = 1
+
+  def toSQL(): String = {
+
+    s"SELECT sampleId,contigName,position,coverage AS `${output.head.name}` FROM coverage_norm('$tableName')"
+  }
+
+  override def newInstance(): CoverageNorm = copy(output = output.map(_.newInstance()))
+
+  override def computeStats(conf: SQLConf): Statistics = {
+    val sizeInBytes = LongType.defaultSize * numElements
+    Statistics( sizeInBytes = sizeInBytes )
+  }
+
+  override def simpleString: String = {
+    s"CoverageNorm ('$tableName')"
+  }
+}
 
 /*coverage_hist*/
 object CoverageHist {

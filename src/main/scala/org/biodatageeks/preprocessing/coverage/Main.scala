@@ -10,7 +10,8 @@ import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructT
 import org.apache.spark.sql._
 import org.bdgenomics.utils.instrumentation.{Metrics, MetricsListener, RecordedMetrics}
 import org.apache.spark.ml.clustering.{BisectingKMeans, GaussianMixture, KMeans, LDA}
-import org.apache.spark.ml.linalg.{Vector, Vectors}
+import org.apache.spark.ml.linalg.{DenseVector, Vector, Vectors}
+import org.apache.spark.ml.feature.{PCA, PCAModel}
 import org.rogach.scallop.ScallopConf
 
 import scala.collection.JavaConversions._
@@ -93,7 +94,9 @@ object Main {
       .builder()
       .appName("CoverageClustering")
       .config("spark.master", "local")
-      .config("spark.sql.catalogImplementation","hive")
+      .config("spark.driver.memory", "2g")
+      .config("spark.executor.memory", "2g")
+      //.config("spark.sql.catalogImplementation","hive")
       .getOrCreate()
 
     import spark.implicits._
@@ -111,174 +114,300 @@ object Main {
     var positionCounts:Array[Int] = Array()
     var coverageSums:Array[Int] = Array()
     var allColumns:Array[String] = Array()
-    breakable {
-      for (bamPath <- fileList) {
-        index = index+1
-        val tableNameBAM = "reads"+index.toString
-        val tableNameBAMSelect = "reads"+index.toString+"select"
-        val columnName = "coverage"+index.toString
-        allColumns = allColumns :+ columnName
-        println(bamPath)
-        session.sql(s"DROP TABLE IF EXISTS ${tableNameBAM}")
-        session.sql(
-          s"""
-             |CREATE TABLE ${tableNameBAM}
-             |USING org.biodatageeks.datasources.BAM.BAMDataSource
-             |OPTIONS(path "${bamPath}")
-             |
-          """.stripMargin)
-        //session.sql(s"SELECT start,count(*) from ${tableNameBAM} where contigName='22' group by start").show
 
-        session.sql(s"DROP TABLE IF EXISTS ${tableNameBAMSelect}")
+    try {
+      val fileName = "preprocessed"+filePostfix+".parquet"
+      dataset = spark.read.parquet("/home/kacper/"+fileName)
+      var pca = new PCA
+      pca = pca.setK(15)
+      pca = pca.setInputCol("features")
+      pca = pca.setOutputCol("features1")
+      var pcaModel = pca.fit(dataset)
 
-        //session.sql(s"SELECT flags,flags & ${flag} from ${tableNameBAM} WHERE start <= ${geneEnd}").show
-        session.sql(s"create table ${tableNameBAMSelect} as SELECT * from ${tableNameBAM} WHERE start <= ${geneEnd} and end >=${geneStart} and contigName=${chr}"+strandSql)
-        lineCounts=lineCounts:+ session.sql(s"SELECT count(*) from ${tableNameBAMSelect}").first().getLong(0).toInt
-        if (session.sql(s"SELECT * from ${tableNameBAMSelect}").count()>0) {
-          //println("session.experimental.extraStrategies = new CoverageStrategy(session) :: Nil")
+      // Project vectors to the linear space spanned by the top 5 principal
+      // components, keeping the label
+      dataset = pcaModel.transform(dataset).drop("features").withColumnRenamed("features1","features")
 
-          //session.sql(s"SELECT count(*) FROM coverage_hist('${tableNameBAM}') where position >= ${geneStart} and position <= ${geneEnd}").show
-          session.sql(s"DROP TABLE IF EXISTS ${tableNameBAM}")
-          //println("session.sql(s\"SELECT * FROM coverage_hist('${tableNameBAM}')\").show")
-          ////session.sql(s"SELECT * FROM coverage_hist('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}").show
+      dataset.show()
 
-          positionCounts=positionCounts:+ session.sql(s"SELECT count(*) FROM coverage_hist('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}").first().getLong(0).toInt
-          coverageSums=coverageSums:+session.sql(s"SELECT sum(coverageTotal) FROM coverage_hist('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}").first().getLong(0).toInt
-          //session.sql(s"SELECT max(position),min(position) FROM coverage_hist('${tableNameBAM}')").show
-          //print(session.sql(s"SELECT count(*) FROM coverage_hist('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}").select("coverage").collect().map(_(0)).toList)
+      val pcaFile = new BufferedWriter(new FileWriter("pca"+filePostfix+".csv")) //replace the path with the desired path and filename with the desired filename
 
-          if (index == 1 || dataset == null) {
-            dataset = session
-              .sql(s"SELECT * FROM coverage_hist('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}")
-              .as[CoverageRecordHist]
-              .withColumnRenamed("coverageTotal",columnName)
-          } else {
-            dataset = dataset.join(session
-              .sql(s"SELECT * FROM coverage_hist('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}")
-              .as[CoverageRecordHist]
-              .withColumnRenamed("coverageTotal",columnName),
-              Seq("contigName","position"),"FULL_OUTER"
-            ).toDF
-          }
-          //session.sql(s"DROP TABLE IF EXISTS ${tableNameBAMSelect}")
-          columns = columns :+ columnName
-        } else {
-          positionCounts=positionCounts:+0
-          coverageSums=coverageSums:+0
-          session.sql(s"DROP TABLE IF EXISTS ${tableNameBAM}")
-          session.sql(s"DROP TABLE IF EXISTS ${tableNameBAMSelect}")
-        }
-      }
-    }
-    if (dataset != null) {
-      dataset = dataset.orderBy("position")
+      var csvWriter = new CSVWriter(pcaFile)
 
-      val positions = dataset.select("position").map(x =>
-          x.getInt(0)
+      var csvFields = Array("Sample","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15")
+
+      var listOfRecords = new ListBuffer[Array[String]]()
+
+      listOfRecords += csvFields
+      val pcaArray = dataset.select("features").map(x =>
+        x.getAs[DenseVector](0).toArray.map(x=>x.toString)
       ).collect
+      for (i <- 0 to (fileNames.size-1)) {
+        listOfRecords += Array(
+          fileNames.apply(i))++ pcaArray.apply(i)
 
-      //positions.foreach(println)
+      }
 
-      dataset.show
-      if (dataset.count()>0) {
-        dataset = dataset.select(columns.head, columns.tail: _*)
-        dataset.groupBy().sum().show
-        val count = dataset.count()
-        dataset.show()
+      csvWriter.writeAll(listOfRecords.toList)
 
-        var rowSeq: Seq[(Double, Vector)] = Seq()
-        var idx = 0
-        for (columnName <- allColumns) {
-          idx = idx + 1
-          if (columns contains columnName) {
-            rowSeq = rowSeq.:+(idx.toDouble,
-              Vectors.dense(
-                dataset.select(columnName).map(x =>
-                  if (x.isNullAt(0)) {
-                    0.0
-                  }
-                  else {
-                    x.getInt(0).toDouble
-                  }
-                ).collect
-              ))
-          } else {
-            rowSeq = rowSeq.:+(idx.toDouble,
-              Vectors.zeros(count.toInt)
-            )
+      pcaFile.close()
+
+      // Trains a k-means model.
+
+      var predictionArray: Array[Array[Int]] = Array()
+      var clusterCounts:Array[Int] = Array()
+      for (idx <- 2 to (fileList.size)) {
+        clusterCounts = clusterCounts:+idx
+        val kmeans = new KMeans().setK(idx).setSeed(1L)
+        val modelKMEANS = kmeans.fit(dataset)
+
+        // Make predictions
+        val predictions = modelKMEANS.transform(dataset)
+
+        predictions.show
+
+        predictionArray = predictionArray:+predictions.select("prediction").map(x =>
+          x.getInt(0)
+        ).collect
+
+      }
+
+      val clusteringFile = new BufferedWriter(new FileWriter("clustering"+filePostfix+".csv")) //replace the path with the desired path and filename with the desired filename
+
+      csvWriter = new CSVWriter(clusteringFile)
+
+      csvFields = Array("Sample","Lines","Positions","CoverageSum")++clusterCounts.map(x=>x.toString)
+
+      listOfRecords = new ListBuffer[Array[String]]()
+
+      listOfRecords += csvFields
+
+      for (i <- 0 to (fileNames.size-1)) {
+        listOfRecords += Array(
+          fileNames.apply(i))++
+          predictionArray.map(x=>x.apply(i).toString)
+      }
+
+      csvWriter.writeAll(listOfRecords.toList)
+
+      clusteringFile.close()
+    } catch {
+      case e:AnalysisException =>
+        breakable {
+          for (bamPath <- fileList) {
+            index = index+1
+            val tableNameBAM = "reads"+index.toString
+            val tableNameBAMSelect = "reads"+index.toString+"select"
+            val columnName = "coverage"+index.toString
+            allColumns = allColumns :+ columnName
+            println(bamPath)
+            session.sql(s"DROP TABLE IF EXISTS ${tableNameBAM}")
+            session.sql(
+              s"""
+                 |CREATE TABLE ${tableNameBAM}
+                 |USING org.biodatageeks.datasources.BAM.BAMDataSource
+                 |OPTIONS(path "${bamPath}")
+                 |
+          """.stripMargin)
+            //session.sql(s"SELECT start,count(*) from ${tableNameBAM} where contigName='22' group by start").show
+
+            session.sql(s"DROP TABLE IF EXISTS ${tableNameBAMSelect}")
+            //session.sql(s"SELECT flags,flags & ${flag} from ${tableNameBAM} WHERE start <= ${geneEnd}").show
+            session.sql(s"create table ${tableNameBAMSelect} using parquet as SELECT * from ${tableNameBAM} WHERE start <= ${geneEnd} and end >=${geneStart} and contigName=${chr}"+strandSql)
+            lineCounts=lineCounts:+ session.sql(s"SELECT count(*) from ${tableNameBAMSelect}").first().getLong(0).toInt
+            if (session.sql(s"SELECT * from ${tableNameBAMSelect}").count()>0) {
+              //println("session.experimental.extraStrategies = new CoverageStrategy(session) :: Nil")
+
+              //session.sql(s"SELECT count(*) FROM coverage_hist('${tableNameBAM}') where position >= ${geneStart} and position <= ${geneEnd}").show
+              session.sql(s"DROP TABLE IF EXISTS ${tableNameBAM}")
+              //println("session.sql(s\"SELECT * FROM coverage_hist('${tableNameBAM}')\").show")
+              ////session.sql(s"SELECT * FROM coverage_hist('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}").show
+
+              positionCounts=positionCounts:+ session.sql(s"SELECT count(*) FROM coverage_norm('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}").first().getLong(0).toInt
+              coverageSums=coverageSums:+session.sql(s"SELECT sum(coverage) FROM coverage_norm('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}").first().getLong(0).toInt
+              //session.sql(s"SELECT max(position),min(position) FROM coverage_hist('${tableNameBAM}')").show
+              //print(session.sql(s"SELECT count(*) FROM coverage_hist('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}").select("coverage").collect().map(_(0)).toList)
+
+              if (index == 1 || dataset == null) {
+                dataset = session
+                  .sql(s"SELECT * FROM coverage_norm('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}")
+                  .as[CoverageRecord]
+                  .withColumnRenamed("coverage",columnName)
+              } else {
+                dataset = dataset.join(session
+                  .sql(s"SELECT * FROM coverage_norm('${tableNameBAMSelect}') where position >= ${geneStart} and position <= ${geneEnd} and contigName=${chr}")
+                  .as[CoverageRecord]
+                  .withColumnRenamed("coverage",columnName),
+                  Seq("contigName","position"),"FULL_OUTER"
+                ).toDF
+              }
+              //session.sql(s"DROP TABLE IF EXISTS ${tableNameBAMSelect}")
+              columns = columns :+ columnName
+            } else {
+              positionCounts=positionCounts:+0
+              coverageSums=coverageSums:+0
+              session.sql(s"DROP TABLE IF EXISTS ${tableNameBAM}")
+              session.sql(s"DROP TABLE IF EXISTS ${tableNameBAMSelect}")
+            }
           }
         }
+        if (dataset != null) {
+          dataset = dataset.orderBy("position")
 
-
-        val coverageFile = new BufferedWriter(new FileWriter("coverage"+filePostfix+".csv")) //replace the path with the desired path and filename with the desired filename
-
-        var csvWriter = new CSVWriter(coverageFile)
-
-        var csvFields = "Sample"+: positions.map(x=>x.toString)
-
-        var listOfRecords = new ListBuffer[Array[String]]()
-
-        listOfRecords += csvFields
-
-        for (i <- 0 to (rowSeq.size-1)) {
-          listOfRecords += fileNames.apply(i)+:rowSeq.apply(i)._2.toArray.map(x=>x.toInt.toString)
-        }
-
-        csvWriter.writeAll(listOfRecords.toList)
-
-        coverageFile.close()
-
-
-
-        dataset = sc.parallelize(rowSeq).toDF("label", "features")
-        dataset.show()
-        //val fileName = new SimpleDateFormat("'preprocessed'yyyyMMddHHmm'.parquet'").format(new Date())
-        //dataset.write.format("parquet").save("/home/kacper/"+fileName)
-        // Trains a k-means model.
-
-        var predictionArray: Array[Array[Int]] = Array()
-        var clusterCounts:Array[Int] = Array()
-        for (idx <- 2 to (fileList.size)) {
-          clusterCounts = clusterCounts:+idx
-          val kmeans = new KMeans().setK(idx).setSeed(1L)
-          val modelKMEANS = kmeans.fit(dataset)
-
-          // Make predictions
-          val predictions = modelKMEANS.transform(dataset)
-
-          predictions.show
-
-          predictionArray = predictionArray:+predictions.select("prediction").map(x =>
+          val positions = dataset.select("position").map(x =>
             x.getInt(0)
           ).collect
 
+          //positions.foreach(println)
+
+          dataset.show
+          if (dataset.count()>0) {
+            dataset = dataset.select(columns.head, columns.tail: _*)
+            dataset.groupBy().sum().show
+            val count = dataset.count()
+            dataset.show()
+
+            var rowSeq: Seq[(Double, Vector)] = Seq()
+            var idx = 0
+            for (columnName <- allColumns) {
+              idx = idx + 1
+              if (columns contains columnName) {
+                rowSeq = rowSeq.:+(idx.toDouble,
+                  Vectors.dense(
+                    dataset.select(columnName).map(x =>
+                      if (x.isNullAt(0)) {
+                        0.0
+                      }
+                      else {
+                        x.getInt(0).toDouble
+                      }
+                    ).collect
+                  ))
+              } else {
+                rowSeq = rowSeq.:+(idx.toDouble,
+                  Vectors.zeros(count.toInt)
+                )
+              }
+            }
+
+
+            val coverageFile = new BufferedWriter(new FileWriter("coverage"+filePostfix+".csv")) //replace the path with the desired path and filename with the desired filename
+
+            var csvWriter = new CSVWriter(coverageFile)
+
+            var csvFields = "Sample"+: positions.map(x=>x.toString)
+
+            var listOfRecords = new ListBuffer[Array[String]]()
+
+            listOfRecords += csvFields
+
+            for (i <- 0 to (rowSeq.size-1)) {
+              listOfRecords += fileNames.apply(i)+:rowSeq.apply(i)._2.toArray.map(x=>x.toInt.toString)
+            }
+
+            csvWriter.writeAll(listOfRecords.toList)
+
+            coverageFile.close()
+
+
+
+            dataset = sc.parallelize(rowSeq).toDF("label", "features")
+
+            //val fileName = new SimpleDateFormat("'preprocessed'yyyyMMddHHmm'.parquet'").format(new Date())
+            val fileName = "preprocessed"+filePostfix+".parquet"
+            dataset.write.format("parquet").save("/home/kacper/"+fileName)
+
+            index=0
+            for (bamPath <- fileList) {
+              index = index + 1
+              val tableNameBAM = "reads" + index.toString
+              val tableNameBAMSelect = "reads" + index.toString + "select"
+              session.sql(s"DROP TABLE IF EXISTS ${tableNameBAM}")
+              session.sql(s"DROP TABLE IF EXISTS ${tableNameBAMSelect}")
+            }
+
+            var pca = new PCA
+            pca = pca.setK(15)
+            pca = pca.setInputCol("features")
+            pca = pca.setOutputCol("features1")
+            var pcaModel = pca.fit(dataset)
+
+            // Project vectors to the linear space spanned by the top 5 principal
+            // components, keeping the label
+            dataset = pcaModel.transform(dataset).drop("features").withColumnRenamed("features1","features")
+            dataset.show()
+
+            val pcaFile = new BufferedWriter(new FileWriter("pca"+filePostfix+".csv")) //replace the path with the desired path and filename with the desired filename
+
+            csvWriter = new CSVWriter(pcaFile)
+
+            csvFields = Array("Sample","1","2","3","4","5","6","7","8","9","10","11","12","13","14","15")
+
+            listOfRecords = new ListBuffer[Array[String]]()
+
+            listOfRecords += csvFields
+            val pcaArray = dataset.select("features").map(x =>
+              x.getAs[DenseVector](0).toArray.map(x=>x.toString)
+            ).collect
+            for (i <- 0 to (fileNames.size-1)) {
+              listOfRecords += Array(
+                fileNames.apply(i))++ pcaArray.apply(i)
+
+            }
+
+            csvWriter.writeAll(listOfRecords.toList)
+
+            pcaFile.close()
+
+            // Trains a k-means model.
+
+            var predictionArray: Array[Array[Int]] = Array()
+            var clusterCounts:Array[Int] = Array()
+            for (idx <- 2 to (fileList.size)) {
+              clusterCounts = clusterCounts:+idx
+              val kmeans = new KMeans().setK(idx).setSeed(1L)
+              val modelKMEANS = kmeans.fit(dataset)
+
+              // Make predictions
+              val predictions = modelKMEANS.transform(dataset)
+
+              predictions.show
+
+              predictionArray = predictionArray:+predictions.select("prediction").map(x =>
+                x.getInt(0)
+              ).collect
+
+            }
+
+            val clusteringFile = new BufferedWriter(new FileWriter("clustering"+filePostfix+".csv")) //replace the path with the desired path and filename with the desired filename
+
+            csvWriter = new CSVWriter(clusteringFile)
+
+            csvFields = Array("Sample","Lines","Positions","CoverageSum")++clusterCounts.map(x=>x.toString)
+
+            listOfRecords = new ListBuffer[Array[String]]()
+
+            listOfRecords += csvFields
+
+            for (i <- 0 to (fileNames.size-1)) {
+              listOfRecords += Array(
+                fileNames.apply(i),
+                lineCounts.apply(i).toString,
+                positionCounts.apply(i).toString,
+                coverageSums.apply(i).toString)++
+                predictionArray.map(x=>x.apply(i).toString)
+            }
+
+            csvWriter.writeAll(listOfRecords.toList)
+
+            clusteringFile.close()
+
+          }
         }
-
-        val clusteringFile = new BufferedWriter(new FileWriter("clustering"+filePostfix+".csv")) //replace the path with the desired path and filename with the desired filename
-
-        csvWriter = new CSVWriter(clusteringFile)
-
-        csvFields = Array("Sample","Lines","Positions","CoverageSum")++clusterCounts.map(x=>x.toString)
-
-        listOfRecords = new ListBuffer[Array[String]]()
-
-        listOfRecords += csvFields
-
-        for (i <- 0 to (fileNames.size-1)) {
-          listOfRecords += Array(
-            fileNames.apply(i),
-            lineCounts.apply(i).toString,
-            positionCounts.apply(i).toString,
-            coverageSums.apply(i).toString)++
-            predictionArray.map(x=>x.apply(i).toString)
-        }
-
-        csvWriter.writeAll(listOfRecords.toList)
-
-        clusteringFile.close()
-
-      }
     }
+
+
+
     sc.stop()
     spark.stop()
 }
